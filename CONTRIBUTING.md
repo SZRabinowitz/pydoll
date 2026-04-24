@@ -16,7 +16,7 @@ Thank you for your interest in contributing to the project! This document provid
 ### Prerequisites
 
 - Python 3.10 or higher
-- [Poetry](https://python-poetry.org/docs/#installation) for dependency management
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) for dependency and project management
 
 ### Installation
 
@@ -26,14 +26,14 @@ Thank you for your interest in contributing to the project! This document provid
    cd pydoll
    ```
 
-2. Install dependencies using Poetry:
+2. Install dependencies using uv:
    ```bash
-   poetry install
+   uv sync
    ```
 
-3. Activate the virtual environment:
+3. Run project commands inside the uv environment:
    ```bash
-   poetry shell
+   uv run <command>
    ```
 
 ## Development Workflow
@@ -51,17 +51,17 @@ Thank you for your interest in contributing to the project! This document provid
 
 3. Check your code using the linter:
    ```bash
-   poetry run task lint
+   uv run task lint
    ```
 
 4. Format your code:
    ```bash
-   poetry run task format
+   uv run task format
    ```
 
 5. Run the tests to ensure everything is working:
    ```bash
-   poetry run task test
+   uv run task test
    ```
 
 6. Commit your changes following the commit conventions (see below).
@@ -77,13 +77,13 @@ This project uses [Ruff](https://github.com/charliermarsh/ruff) for linting and 
 To check if your code follows the standards:
 
 ```bash
-poetry run task lint
+uv run task lint
 ```
 
 To automatically fix some issues and format your code:
 
 ```bash
-poetry run task format
+uv run task format
 ```
 
 **Important:** Make sure to resolve all linting issues before submitting your changes. Code that doesn't pass the linting checks will not be accepted.
@@ -103,7 +103,7 @@ For each new feature or modification, it is **mandatory** to write corresponding
 To run all tests:
 
 ```bash
-poetry run task test
+uv run task test
 ```
 
 This will also generate a code coverage report (HTML) that can be viewed in the `htmlcov/` folder.

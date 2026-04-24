@@ -37,29 +37,20 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          export PATH="$HOME/.local/bin:$PATH"
+      - name: Install uv and set Python
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.2"
+          python-version: "3.12.5"
+          enable-cache: true
 
-      - name: Update Poetry version in pyproject.toml
+      - name: Update project version and lockfile
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          poetry version "${{ needs.version-cz.outputs.version }}"
-          git add pyproject.toml
-          git commit -m "Update pyproject.toml to version ${{ needs.version-cz.outputs.version }}"
-          git pull --rebase
-          git push
-
-      - name: Update poetry.lock
-        continue-on-error: true
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          poetry lock
-          git add poetry.lock
-          git commit -m "Update poetry.lock"
+          uv version "${{ needs.version-cz.outputs.version }}"
+          git add pyproject.toml uv.lock
+          git commit -m "Update project version to ${{ needs.version-cz.outputs.version }}"
           git pull --rebase
           git push
 

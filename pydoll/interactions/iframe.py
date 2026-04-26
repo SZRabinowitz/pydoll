@@ -81,6 +81,10 @@ class IFrameContextResolver:
         effective_handler = session_handler or base_handler
         effective_session_id = session_id or base_session_id
 
+        if context.session_id is None and effective_session_id:
+            context.session_handler = effective_handler
+            context.session_id = effective_session_id
+
         execution_context_id = await self._create_isolated_world_for_frame(
             frame_id, effective_handler, effective_session_id
         )

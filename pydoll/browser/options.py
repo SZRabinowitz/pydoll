@@ -31,6 +31,7 @@ class ChromiumOptions(Options):
         self._headless = False
         self._webrtc_leak_protection = False
         self._page_load_state = PageLoadState.COMPLETE
+        self._source_ip: str | None = None
 
     @property
     def arguments(self) -> list[str]:
@@ -333,6 +334,14 @@ class ChromiumOptions(Options):
         if enabled == has_argument:
             return
         methods_map[enabled](argument)
+
+    @property
+    def source_ip(self) -> str | None:
+        return self._source_ip
+
+    @source_ip.setter
+    def source_ip(self, source_ip: str | None):
+        self._source_ip = source_ip
 
     @property
     def page_load_state(self) -> PageLoadState:

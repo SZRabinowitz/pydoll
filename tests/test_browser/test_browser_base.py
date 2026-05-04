@@ -109,6 +109,50 @@ async def test_start_browser_success(mock_browser):
 
 
 @pytest.mark.asyncio
+async def test_setup_source_ip_proxy_adds_browser_proxy_arguments(mock_browser):
+    mock_browser.options.source_ip = '192.168.1.50'
+
+    with patch('pydoll.browser.chromium.base.SourceIPSocks5Proxy') as mock_proxy_cls:
+        mock_proxy = mock_proxy_cls.return_value
+        mock_proxy.local_port = 1081
+        mock_proxy.start = AsyncMock()
+
+        await mock_browser._setup_source_ip_proxy()
+
+    mock_proxy_cls.assert_called_once_with(source_ip='192.168.1.50')
+    mock_proxy.start.assert_awaited_once()
+    assert '--proxy-server=socks5://127.0.0.1:1081' in mock_browser.options.arguments
+    assert '--disable-quic' in mock_browser.options.arguments
+
+
+@pytest.mark.asyncio
+async def test_setup_source_ip_proxy_rejects_existing_proxy_argument(mock_browser):
+    mock_browser.options.source_ip = '192.168.1.50'
+    mock_browser.options.add_argument('--proxy-server=socks5://127.0.0.1:9999')
+
+    with pytest.raises(ValueError, match='source_ip cannot be used'):
+        await mock_browser._setup_source_ip_proxy()
+
+
+@pytest.mark.asyncio
+async def test_stop_source_ip_proxy_stops_proxy(mock_browser):
+    proxy = MagicMock()
+    proxy.stop = AsyncMock()
+    mock_browser._source_ip_proxy = proxy
+    mock_browser._source_ip_proxy_argument = '--proxy-server=socks5://127.0.0.1:1081'
+    mock_browser._source_ip_disable_quic_added = True
+    mock_browser.options.add_argument('--proxy-server=socks5://127.0.0.1:1081')
+    mock_browser.options.add_argument('--disable-quic')
+
+    await mock_browser._stop_source_ip_proxy()
+
+    proxy.stop.assert_awaited_once()
+    assert mock_browser._source_ip_proxy is None
+    assert '--proxy-server=socks5://127.0.0.1:1081' not in mock_browser.options.arguments
+    assert '--disable-quic' not in mock_browser.options.arguments
+
+
+@pytest.mark.asyncio
 async def test_start_browser_failure(mock_browser):
     mock_browser._connection_handler.ping.return_value = False
     with patch('pydoll.browser.chromium.base.asyncio.sleep', AsyncMock()) as mock_sleep:

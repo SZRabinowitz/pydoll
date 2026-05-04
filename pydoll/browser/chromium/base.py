@@ -40,6 +40,7 @@ from pydoll.exceptions import (
 from pydoll.protocol.browser.types import DownloadBehavior
 from pydoll.protocol.fetch.events import FetchEvent
 from pydoll.protocol.fetch.types import AuthChallengeResponseType
+from pydoll.utils import SourceIPSocks5Proxy
 from pydoll.utils.user_agent_parser import UserAgentParser
 
 if TYPE_CHECKING:
@@ -106,6 +107,9 @@ class Browser(ABC):  # noqa: PLR0904
         self._temp_directory_manager = TempDirectoryManager()
         self._ws_address: Optional[str] = None
         self._connection_handler = ConnectionHandler(self._connection_port)
+        self._source_ip_proxy: Optional[SourceIPSocks5Proxy] = None
+        self._source_ip_proxy_argument: Optional[str] = None
+        self._source_ip_disable_quic_added = False
         self._backup_preferences_dir = ''
         self._tabs_opened: dict[str, Tab] = {}
         self._context_proxy_auth: dict[str, tuple[str, str]] = {}
@@ -183,15 +187,20 @@ class Browser(ABC):  # noqa: PLR0904
 
         self._setup_user_dir()
         logger.debug('User data directory configured')
+        await self._setup_source_ip_proxy()
         proxy_config = self._proxy_manager.get_proxy_credentials()
 
-        logger.info(f'Starting browser process on port {self._connection_port}')
-        self._browser_process_manager.start_browser_process(
-            binary_location, self._connection_port, self.options.arguments
-        )
-        await self._verify_browser_running()
-        logger.info('Browser process started and responsive')
-        await self._configure_proxy(proxy_config[0], proxy_config[1])
+        try:
+            logger.info(f'Starting browser process on port {self._connection_port}')
+            self._browser_process_manager.start_browser_process(
+                binary_location, self._connection_port, self.options.arguments
+            )
+            await self._verify_browser_running()
+            logger.info('Browser process started and responsive')
+            await self._configure_proxy(proxy_config[0], proxy_config[1])
+        except Exception:
+            await self._stop_source_ip_proxy()
+            raise
 
         valid_tab_id = await self._get_valid_tab_id(await self.get_targets())
         tab = Tab(self, target_id=valid_tab_id, connection_port=self._connection_port)
@@ -220,6 +229,7 @@ class Browser(ABC):  # noqa: PLR0904
         await self._connection_handler.close()
         await asyncio.sleep(0.5 if os.name == 'nt' else 0.1)
         self._temp_directory_manager.cleanup()
+        await self._stop_source_ip_proxy()
         logger.info('Browser process stopped and resources cleaned up')
 
     async def close(self):
@@ -899,6 +909,35 @@ class Browser(ABC):  # noqa: PLR0904
             if self.options.browser_preferences:
                 self._set_browser_preferences_in_temp_dir(temp_dir)
         logger.debug(f'User dir setup complete: {self._get_user_data_dir()}')
+
+    async def _setup_source_ip_proxy(self) -> None:
+        source_ip = getattr(self.options, 'source_ip', None)
+        if not source_ip:
+            return
+        if any(arg.startswith('--proxy-server=') for arg in self.options.arguments):
+            raise ValueError('source_ip cannot be used with an existing --proxy-server argument')
+
+        self._source_ip_proxy = SourceIPSocks5Proxy(source_ip=source_ip)
+        await self._source_ip_proxy.start()
+        self._source_ip_proxy_argument = (
+            f'--proxy-server=socks5://127.0.0.1:{self._source_ip_proxy.local_port}'
+        )
+        self.options.add_argument(self._source_ip_proxy_argument)
+        if '--disable-quic' not in self.options.arguments:
+            self.options.add_argument('--disable-quic')
+            self._source_ip_disable_quic_added = True
+        logger.info('Configured source IP proxy for browser: %s', source_ip)
+
+    async def _stop_source_ip_proxy(self) -> None:
+        if self._source_ip_proxy is not None:
+            await self._source_ip_proxy.stop()
+            self._source_ip_proxy = None
+        if self._source_ip_proxy_argument in self.options.arguments:
+            self.options.remove_argument(self._source_ip_proxy_argument)
+        self._source_ip_proxy_argument = None
+        if self._source_ip_disable_quic_added and '--disable-quic' in self.options.arguments:
+            self.options.remove_argument('--disable-quic')
+        self._source_ip_disable_quic_added = False
 
     def _set_browser_preferences_in_temp_dir(self, temp_dir: TemporaryDirectory):
         os.mkdir(os.path.join(temp_dir.name, 'Default'))

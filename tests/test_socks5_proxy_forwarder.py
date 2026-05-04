@@ -16,6 +16,7 @@ from pydoll.utils.socks5_proxy_forwarder import (
     REPLY_GENERAL_FAILURE,
     REPLY_SUCCESS,
     SOCKS5Forwarder,
+    SourceIPSocks5Proxy,
     _close_writer,
     _HandshakeError,
     _pipe,
@@ -699,6 +700,62 @@ class TestHandleClientReplyCodes:
         client_writer.wait_closed.assert_awaited_once()
         remote_writer.close.assert_called_once()
         remote_writer.wait_closed.assert_awaited_once()
+
+
+class TestSourceIPSocks5Proxy:
+    @pytest.mark.asyncio
+    async def test_handle_client_binds_outbound_connection_to_source_ip(self):
+        proxy = SourceIPSocks5Proxy(source_ip='192.168.1.50')
+        client_reader = AsyncMock(spec=asyncio.StreamReader)
+        client_writer = MagicMock(spec=asyncio.StreamWriter)
+        client_writer.close = MagicMock()
+        client_writer.wait_closed = AsyncMock()
+
+        remote_reader = AsyncMock(spec=asyncio.StreamReader)
+        remote_writer = MagicMock(spec=asyncio.StreamWriter)
+        remote_writer.close = MagicMock()
+        remote_writer.wait_closed = AsyncMock()
+
+        with patch.object(
+            proxy,
+            '_accept_connect_request',
+            return_value=('example.com', 443),
+        ), patch(
+            'asyncio.open_connection',
+            return_value=(remote_reader, remote_writer),
+        ) as mock_open_connection, patch(
+            'pydoll.utils.socks5_proxy_forwarder._pipe',
+            new_callable=AsyncMock,
+        ):
+            await proxy._handle_client(client_reader, client_writer)
+
+        mock_open_connection.assert_awaited_once_with(
+            'example.com',
+            443,
+            local_addr=('192.168.1.50', 0),
+        )
+
+    @pytest.mark.asyncio
+    async def test_accept_connect_request_parses_domain_destination(self):
+        proxy = SourceIPSocks5Proxy(source_ip='192.168.1.50')
+        reader = AsyncMock(spec=asyncio.StreamReader)
+        writer = MagicMock(spec=asyncio.StreamWriter)
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+        responses = [
+            b'\x05\x01',
+            b'\x00',
+            b'\x05\x01\x00\x03',
+            b'\x0b',
+            b'example.com',
+            b'\x01\xbb',
+        ]
+        reader.readexactly = AsyncMock(side_effect=responses)
+
+        destination = await proxy._accept_connect_request(reader, writer)
+
+        assert destination == ('example.com', 443)
+        writer.write.assert_called_once_with(bytes([0x05, 0x00]))
 
 
 # ---------------------------------------------------------------------------

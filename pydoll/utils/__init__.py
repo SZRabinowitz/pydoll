@@ -9,7 +9,7 @@ from pydoll.utils.general import (
     normalize_synthetic_xpath,
     validate_browser_paths,
 )
-from pydoll.utils.socks5_proxy_forwarder import SOCKS5Forwarder
+from pydoll.utils.socks5_proxy_forwarder import SOCKS5Forwarder, SourceIPSocks5Proxy
 from pydoll.utils.user_agent_parser import UserAgentParser
 
 __all__ = [
@@ -23,5 +23,6 @@ __all__ = [
     'normalize_synthetic_xpath',
     'validate_browser_paths',
     'SOCKS5Forwarder',
+    'SourceIPSocks5Proxy',
     'UserAgentParser',
 ]

@@ -454,6 +454,166 @@ class SOCKS5Forwarder:
         await writer.drain()
 
 
+class SourceIPSocks5Proxy:
+    """Local SOCKS5 proxy that binds outbound connections to a source IP."""
+
+    def __init__(
+        self,
+        source_ip: str,
+        local_host: str = '127.0.0.1',
+        local_port: int = 0,
+    ) -> None:
+        self.source_ip = source_ip
+        self.local_host = local_host
+        self.local_port = local_port
+        self._server: asyncio.Server | None = None
+
+    async def __aenter__(self) -> SourceIPSocks5Proxy:
+        await self.start()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        await self.stop()
+
+    async def start(self) -> None:
+        self._server = await asyncio.start_server(
+            self._handle_client,
+            self.local_host,
+            self.local_port,
+        )
+        sockets = list(self._server.sockets or [])
+        ports = {s.getsockname()[1] for s in sockets}
+        if len(ports) != 1:
+            await self.stop()
+            raise RuntimeError(
+                f'start_server created sockets with different ports: {sorted(ports)}. '
+                "Use an explicit IP (e.g. '127.0.0.1' or '::1') instead of a hostname, "
+                'or specify --local-port explicitly.'
+            )
+        self.local_port = ports.pop()
+        logger.info(
+            'Source IP SOCKS5 proxy listening on %s:%s via %s',
+            self.local_host,
+            self.local_port,
+            self.source_ip,
+        )
+
+    async def stop(self) -> None:
+        if self._server is not None:
+            self._server.close()
+            await self._server.wait_closed()
+            self._server = None
+            logger.info('Source IP SOCKS5 proxy stopped')
+
+    async def _handle_client(
+        self,
+        client_reader: asyncio.StreamReader,
+        client_writer: asyncio.StreamWriter,
+    ) -> None:
+        remote_writer: asyncio.StreamWriter | None = None
+        try:
+            dest_host, dest_port = await self._accept_connect_request(
+                client_reader,
+                client_writer,
+            )
+            remote_reader, remote_writer = await asyncio.wait_for(
+                asyncio.open_connection(
+                    dest_host,
+                    dest_port,
+                    local_addr=(self.source_ip, 0),
+                ),
+                timeout=HANDSHAKE_TIMEOUT,
+            )
+            await SOCKS5Forwarder._send_reply(client_writer, REPLY_SUCCESS)
+            await asyncio.gather(
+                _pipe(client_reader, remote_writer, 'client->destination'),
+                _pipe(remote_reader, client_writer, 'destination->client'),
+            )
+        except _HandshakeError as exc:
+            logger.warning('Handshake failed: %s', exc)
+            if exc.send_reply:
+                with _suppress_closed():
+                    await SOCKS5Forwarder._send_reply(client_writer, exc.reply_code)
+        except asyncio.TimeoutError:
+            logger.warning('Connection to destination timed out')
+            with _suppress_closed():
+                await SOCKS5Forwarder._send_reply(client_writer, REPLY_GENERAL_FAILURE)
+        except (ConnectionRefusedError, OSError) as exc:
+            logger.warning('Connection to destination failed: %s', exc)
+            reply = (
+                REPLY_CONNECTION_REFUSED
+                if isinstance(exc, ConnectionRefusedError)
+                else REPLY_GENERAL_FAILURE
+            )
+            with _suppress_closed():
+                await SOCKS5Forwarder._send_reply(client_writer, reply)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception('Unexpected error in source IP proxy client handler')
+        finally:
+            await _close_writer(client_writer)
+            if remote_writer is not None:
+                await _close_writer(remote_writer)
+
+    async def _accept_connect_request(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> tuple[str, int]:
+        try:
+            header = await _read_exact(reader, 2, peer='client')
+        except _HandshakeError as exc:
+            raise _HandshakeError(str(exc), send_reply=False) from exc
+        version, nmethods = header[0], header[1]
+        if version != SOCKS5_VERSION:
+            raise _HandshakeError(
+                f'Unsupported SOCKS version from client: {version}', send_reply=False
+            )
+
+        try:
+            methods = await _read_exact(reader, nmethods, peer='client')
+        except _HandshakeError as exc:
+            raise _HandshakeError(str(exc), send_reply=False) from exc
+        if AUTH_NO_AUTH not in methods:
+            writer.write(bytes([SOCKS5_VERSION, AUTH_NO_ACCEPTABLE]))
+            await writer.drain()
+            raise _HandshakeError('Client does not offer no-auth method', send_reply=False)
+
+        writer.write(bytes([SOCKS5_VERSION, AUTH_NO_AUTH]))
+        await writer.drain()
+
+        req = await _read_exact(reader, 4, peer='client')
+        if req[0] != SOCKS5_VERSION:
+            raise _HandshakeError(f'Invalid request SOCKS version: {req[0]}')
+        if req[1] != CMD_CONNECT:
+            raise _HandshakeError('Only CONNECT command is supported', REPLY_COMMAND_NOT_SUPPORTED)
+        if req[2] != 0x00:
+            raise _HandshakeError(f'Invalid reserved byte: {req[2]:#x}')
+
+        dest_host = await self._read_destination_host(reader, req[3])
+        dest_port = struct.unpack('!H', await _read_exact(reader, 2, peer='client'))[0]
+        return dest_host, dest_port
+
+    @staticmethod
+    async def _read_destination_host(reader: asyncio.StreamReader, atyp: int) -> str:
+        if atyp == ATYP_IPV4:
+            raw_addr = await _read_exact(reader, 4, peer='client')
+            return str(ipaddress.IPv4Address(raw_addr))
+        if atyp == ATYP_DOMAIN:
+            length = (await _read_exact(reader, 1, peer='client'))[0]
+            return (await _read_exact(reader, length, peer='client')).decode('idna')
+        if atyp == ATYP_IPV6:
+            raw_addr = await _read_exact(reader, 16, peer='client')
+            return str(ipaddress.IPv6Address(raw_addr))
+        raise _HandshakeError('Address type not supported', REPLY_ADDRESS_TYPE_NOT_SUPPORTED)
+
+
 class _HandshakeError(Exception):
     """Raised when a SOCKS5 handshake step fails."""
 

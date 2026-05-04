@@ -37,6 +37,17 @@ def test_initial_page_load_state():
     assert options.page_load_state == PageLoadState.COMPLETE
 
 
+def test_initial_source_ip():
+    options = Options()
+    assert options.source_ip is None
+
+
+def test_set_source_ip():
+    options = Options()
+    options.source_ip = '192.168.1.50'
+    assert options.source_ip == '192.168.1.50'
+
+
 def test_set_page_load_state():
     options = Options()
     options.page_load_state = PageLoadState.INTERACTIVE

@@ -61,7 +61,8 @@ from pydoll.exceptions import (
     WaitElementTimeout,
     WebSocketConnectionClosed,
 )
-from pydoll.extractor.engine import ExtractionEngine
+
+# from pydoll.extractor.engine import ExtractionEngine
 from pydoll.interactions import KeyboardAPI, MouseAPI, ScrollAPI
 from pydoll.interactions.iframe import IFrameContext
 from pydoll.protocol.browser.types import DownloadBehavior, DownloadProgressState
@@ -181,7 +182,7 @@ class Tab(FindElementsMixin):
         self._scroll: Optional[ScrollAPI] = None
         self._keyboard: Optional[KeyboardAPI] = None
         self._mouse: MouseAPI = MouseAPI(self)
-        self._extraction_engine: Optional[ExtractionEngine] = None
+        # self._extraction_engine: Optional[ExtractionEngine] = None
         logger.debug(
             (
                 f'Tab initialized: target_id={self._target_id}, '
@@ -261,12 +262,12 @@ class Tab(FindElementsMixin):
         """
         return self._mouse
 
-    @property
-    def _extractor(self) -> ExtractionEngine:
-        """Lazy-initialized extraction engine."""
-        if self._extraction_engine is None:
-            self._extraction_engine = ExtractionEngine(self)
-        return self._extraction_engine
+    # @property
+    # def _extractor(self) -> ExtractionEngine:
+    #     """Lazy-initialized extraction engine."""
+    #     if self._extraction_engine is None:
+    #         self._extraction_engine = ExtractionEngine(self)
+    #     return self._extraction_engine
 
     async def extract(
         self,

@@ -5,7 +5,8 @@ import re
 from html import unescape
 from html.parser import HTMLParser
 
-import aiohttp
+from pyreqwest.client import ClientBuilder
+from pyreqwest.exceptions import PyreqwestError, RequestError
 
 from pydoll.exceptions import InvalidBrowserPath, InvalidResponse, NetworkError
 
@@ -127,14 +128,16 @@ async def get_browser_ws_address(port: int) -> str:
         InvalidResponse: If the response is not valid JSON.
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f'http://localhost:{port}/json/version') as response:
-                response.raise_for_status()
-                data = await response.json()
-                return data['webSocketDebuggerUrl']
+        async with ClientBuilder().error_for_status(True).build() as client:
+            response = await client.get(f'http://localhost:{port}/json/version').build().send()
+            data = await response.json()
+            return data['webSocketDebuggerUrl']
 
-    except aiohttp.ClientError as e:
+    except RequestError as e:
         raise NetworkError(f'Failed to get browser ws address: {e}')
+
+    except PyreqwestError as e:
+        raise InvalidResponse(f'Failed to get browser ws address: {e}')
 
     except KeyError as e:
         raise InvalidResponse(f'Failed to get browser ws address: {e}')

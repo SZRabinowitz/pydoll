@@ -1,10 +1,11 @@
-import aiohttp
-import pytest
-from aioresponses import aioresponses
-import tempfile
 import os
 import sys
+import tempfile
 from unittest.mock import patch
+
+import pytest
+from pyreqwest.exceptions import NetworkError as PyreqwestNetworkError
+from pyreqwest.pytest_plugin import ClientMocker
 
 from pydoll import exceptions
 from pydoll.utils import (
@@ -51,7 +52,7 @@ class TestUtils:
         assert decode_base64_to_bytes(base64code) == expected
 
     @pytest.mark.asyncio
-    async def test_successful_response(self):
+    async def test_successful_response(self, client_mocker: ClientMocker):
         """
         Test successful scenario when getting browser WebSocket address.
         Verifies that the function correctly returns the WebSocket URL when
@@ -60,13 +61,12 @@ class TestUtils:
         port = 9222
         expected_url = 'ws://localhost:9222/devtools/browser/abc123'
 
-        with aioresponses() as mocked:
-            mocked.get(
-                f'http://localhost:{port}/json/version',
-                payload={'webSocketDebuggerUrl': expected_url},
-            )
-            result = await get_browser_ws_address(port)
-            assert result == expected_url
+        client_mocker.get(url=f'http://localhost:{port}/json/version').with_body_json(
+            {'webSocketDebuggerUrl': expected_url}
+        )
+
+        result = await get_browser_ws_address(port)
+        assert result == expected_url
 
     @pytest.mark.asyncio
     async def test_network_error(self):
@@ -78,15 +78,14 @@ class TestUtils:
         port = 9222
 
         with pytest.raises(exceptions.NetworkError):
-            with aioresponses() as mocked:
-                mocked.get(
-                    f'http://localhost:{port}/json/version',
-                    exception=aiohttp.ClientError,
-                )
+            with patch(
+                'pydoll.utils.general.ClientBuilder',
+                side_effect=PyreqwestNetworkError('connection failed', {'causes': None}),
+            ):
                 await get_browser_ws_address(port)
 
     @pytest.mark.asyncio
-    async def test_missing_websocket_url(self):
+    async def test_missing_websocket_url(self, client_mocker: ClientMocker):
         """
         Test behavior when API response doesn't contain WebSocket URL.
         Verifies that the function raises InvalidResponse exception when the
@@ -94,16 +93,15 @@ class TestUtils:
         """
         port = 9222
 
-        with aioresponses() as mocked:
-            mocked.get(
-                f'http://localhost:{port}/json/version',
-                payload={'someOtherKey': 'value'},
-            )
-            with pytest.raises(exceptions.InvalidResponse):
-                await get_browser_ws_address(port)
+        client_mocker.get(url=f'http://localhost:{port}/json/version').with_body_json(
+            {'someOtherKey': 'value'}
+        )
+
+        with pytest.raises(exceptions.InvalidResponse):
+            await get_browser_ws_address(port)
 
     @pytest.mark.asyncio
-    async def test_http_error_status(self):
+    async def test_http_error_status(self, client_mocker: ClientMocker):
         """
         Test behavior when HTTP request returns an error status.
         Verifies that the function raises NetworkError when the server
@@ -111,16 +109,13 @@ class TestUtils:
         """
         port = 9222
 
+        client_mocker.get(url=f'http://localhost:{port}/json/version').with_status(404)
+
         with pytest.raises(exceptions.NetworkError):
-            with aioresponses() as mocked:
-                mocked.get(
-                    f'http://localhost:{port}/json/version',
-                    status=404
-                )
-                await get_browser_ws_address(port)
+            await get_browser_ws_address(port)
 
     @pytest.mark.asyncio
-    async def test_custom_port(self):
+    async def test_custom_port(self, client_mocker: ClientMocker):
         """
         Test get_browser_ws_address with a custom port.
         Verifies that the function works correctly with non-default ports.
@@ -128,13 +123,12 @@ class TestUtils:
         port = 9333
         expected_url = 'ws://localhost:9333/devtools/browser/xyz789'
 
-        with aioresponses() as mocked:
-            mocked.get(
-                f'http://localhost:{port}/json/version',
-                payload={'webSocketDebuggerUrl': expected_url},
-            )
-            result = await get_browser_ws_address(port)
-            assert result == expected_url
+        client_mocker.get(url=f'http://localhost:{port}/json/version').with_body_json(
+            {'webSocketDebuggerUrl': expected_url}
+        )
+
+        result = await get_browser_ws_address(port)
+        assert result == expected_url
 
     def test_validate_browser_paths_success(self):
         """

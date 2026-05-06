@@ -17,6 +17,10 @@ dependencies = [
     "pyreqwest>=0.11.8",
     "aiofiles>=25.1.0,<26",
     "typing_extensions>=4.14.0,<5",
+]
+
+[project.optional-dependencies]
+extractor = [
     "pydantic>=2.0,<3",
 ]
 

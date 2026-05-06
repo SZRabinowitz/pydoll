@@ -766,10 +766,14 @@ version = "2.22.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
-    { name = "pydantic" },
     { name = "pyreqwest" },
     { name = "typing-extensions" },
     { name = "websockets" },
+]
+
+[package.optional-dependencies]
+extractor = [
+    { name = "pydantic" },
 ]
 
 [package.dev-dependencies]
@@ -790,11 +794,12 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=25.1.0,<26" },
-    { name = "pydantic", specifier = ">=2.0,<3" },
+    { name = "pydantic", marker = "extra == 'extractor'", specifier = ">=2.0,<3" },
     { name = "pyreqwest", specifier = ">=0.11.8" },
     { name = "typing-extensions", specifier = ">=4.14.0,<5" },
     { name = "websockets", specifier = ">=14,<17" },
 ]
+provides-extras = ["extractor"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -65,6 +65,7 @@ from pydoll.exceptions import (
 # from pydoll.extractor.engine import ExtractionEngine
 from pydoll.interactions import KeyboardAPI, MouseAPI, ScrollAPI
 from pydoll.interactions.iframe import IFrameContext
+from pydoll.protocol.base import CDPEvent
 from pydoll.protocol.browser.types import DownloadBehavior, DownloadProgressState
 from pydoll.protocol.dom.types import Node, ShadowRootType
 from pydoll.protocol.network.types import ResourceType
@@ -1780,11 +1781,11 @@ class Tab(FindElementsMixin):
 
     @overload
     async def on(
-        self, event_name: str, callback: Callable[[dict], Any], temporary: bool = False
+        self, event_name: str, callback: Callable[[CDPEvent[Any]], Any], temporary: bool = False
     ) -> int: ...
     @overload
     async def on(
-        self, event_name: str, callback: Callable[[dict], Awaitable[Any]], temporary: bool = False
+        self, event_name: str, callback: Callable[[CDPEvent[Any]], Awaitable[Any]], temporary: bool = False
     ) -> int: ...
     async def on(
         self,

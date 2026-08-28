@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from tempfile import TemporaryDirectory
 
     from pydoll.browser.interfaces import BrowserOptionsManager
-    from pydoll.protocol.base import Command, Response, T_CommandParams, T_CommandResponse
+    from pydoll.protocol.base import CDPEvent, Command, Response, T_CommandParams, T_CommandResponse
     from pydoll.protocol.browser.methods import (
         GetVersionResponse,
         GetVersionResult,
@@ -545,11 +545,11 @@ class Browser(ABC):  # noqa: PLR0904
 
     @overload
     async def on(
-        self, event_name: str, callback: Callable[[Any], Any], temporary: bool = False
+        self, event_name: str, callback: Callable[[CDPEvent[Any]], Any], temporary: bool = False
     ) -> int: ...
     @overload
     async def on(
-        self, event_name: str, callback: Callable[[Any], Awaitable[Any]], temporary: bool = False
+        self, event_name: str, callback: Callable[[CDPEvent[Any]], Awaitable[Any]], temporary: bool = False
     ) -> int: ...
     async def on(self, event_name, callback, temporary: bool = False) -> int:
         """
